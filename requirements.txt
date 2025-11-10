@@ -1,0 +1,17 @@
+streamlit>=1.28.0
+opencv-python==4.8.1.78
+numpy>=1.24.0,<2.0.0
+
+# Option 1: DeepFace (more accurate but heavier)
+deepface==0.0.79
+tensorflow==2.15.0
+tf-keras==2.15.0
+h5py==3.10.0
+
+# Option 2: FER (lighter, faster, more compatible)
+# Uncomment if using FER instead of DeepFace
+# fer==22.4.0
+# tensorflow==2.15.0
+
+# Database (adjust based on your DB choice)
+# sqlite3 is built-in, no need to install
