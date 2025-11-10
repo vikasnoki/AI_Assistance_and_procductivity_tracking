@@ -1,49 +1,100 @@
+#frontend
 import streamlit as st
-from dotenv import load_dotenv
-from langchain_core.messages import SystemMessage, HumanMessage, AIMessage
-from langchain_huggingface import HuggingFaceEndpoint, ChatHuggingFace
-from langchain_core.prompts import load_prompt
-# Load env variables
-load_dotenv()
+from langgraph_chatbot_backend import chatbot
+from langchain_core.messages import HumanMessage, AIMessage
+import uuid
 
-# Page title
-st.title("AI Assistance")
+# **************************************** utility functions *************************
 
-Temp =st.slider("Creativity:",min_value=0.0,value=0.0,max_value=2.0)
+def generate_thread_id():
+    thread_id = uuid.uuid4()
+    return thread_id
+
+def reset_chat():
+    thread_id = generate_thread_id()
+    st.session_state['thread_id'] = thread_id
+    add_thread(st.session_state['thread_id'])
+    st.session_state['message_history'] = []
+
+def add_thread(thread_id):
+    if thread_id not in st.session_state['chat_threads']:
+        st.session_state['chat_threads'].append(thread_id)
+
+def load_conversation(thread_id):
+    state = chatbot.get_state(config={'configurable': {'thread_id': thread_id}})
+    # Check if messages key exists in state values, return empty list if not
+    return state.values.get('messages', [])
 
 
-# Initialize model
-llm = HuggingFaceEndpoint(
-    repo_id="openai/gpt-oss-20b",
-    temperature=Temp,
-    task="text-generation"
-)
-model = ChatHuggingFace(llm=llm)
-#temp = load_prompt('template.json')
-# Initialize session state for chat history
-if "messages" not in st.session_state:
-    st.session_state.messages = [
-        SystemMessage(content="Explain as an expert in all fields with requiered analogy and example if needed.")
-    ]
+# **************************************** Session Setup ******************************
+if 'message_history' not in st.session_state:
+    st.session_state['message_history'] = []
 
-# User input
-user_input = st.text_input("You:")
-token_size = st.number_input("token-size")
-if st.button('click'):
-    # Process input
-    if user_input:
-        # Append human message
-        st.session_state.messages.append(HumanMessage(content=f"{user_input}.and give the output in range 1 to {token_size} tokens.add recommended wbesites and youtube links related to topic"))
+if 'thread_id' not in st.session_state:
+    st.session_state['thread_id'] = generate_thread_id()
 
-        # Generate AI response
-        ai_message = model.invoke(st.session_state.messages)
+if 'chat_threads' not in st.session_state:
+    st.session_state['chat_threads'] = []
 
-        # Append AI message
-        st.session_state.messages.append(AIMessage(content=ai_message.content))
+add_thread(st.session_state['thread_id'])
 
-# Display chat history
-for msg in st.session_state.messages:
-    if isinstance(msg, HumanMessage):
-        st.markdown(f"*You:* {msg.content}")
-    elif isinstance(msg, AIMessage):
-        st.markdown(f"*AI:* {msg.content}")
+
+# **************************************** Sidebar UI *********************************
+
+st.sidebar.title('LangGraph Chatbot')
+
+if st.sidebar.button('New Chat'):
+    reset_chat()
+
+st.sidebar.header('My Conversations')
+
+for thread_id in st.session_state['chat_threads'][::-1]:
+    if st.sidebar.button(str(thread_id)):
+        st.session_state['thread_id'] = thread_id
+        messages = load_conversation(thread_id)
+
+        temp_messages = []
+
+        for msg in messages:
+            if isinstance(msg, HumanMessage):
+                role='user'
+            else:
+                role='assistant'
+            temp_messages.append({'role': role, 'content': msg.content})
+
+        st.session_state['message_history'] = temp_messages
+
+
+# **************************************** Main UI ************************************
+
+# loading the conversation history
+for message in st.session_state['message_history']:
+    with st.chat_message(message['role']):
+        st.text(message['content'])
+
+user_input = st.chat_input('Type here')
+
+if user_input:
+
+    # first add the message to message_history
+    st.session_state['message_history'].append({'role': 'user', 'content': user_input})
+    with st.chat_message('user'):
+        st.text(user_input)
+
+    CONFIG = {'configurable': {'thread_id': st.session_state['thread_id']}}
+
+     # first add the message to message_history
+    with st.chat_message("assistant"):
+        def ai_only_stream():
+            for message_chunk, metadata in chatbot.stream(
+                {"messages": [HumanMessage(content=user_input)]},
+                config=CONFIG,
+                stream_mode="messages"
+            ):
+                if isinstance(message_chunk, AIMessage):
+                    # yield only assistant tokens
+                    yield message_chunk.content
+
+        ai_message = st.write_stream(ai_only_stream())
+
+    st.session_state['message_history'].append({'role': 'assistant', 'content': ai_message})
