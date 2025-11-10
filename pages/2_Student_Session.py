@@ -237,7 +237,7 @@ if st.session_state['running']:
             if not ret:
                 st.warning("Failed to read frame")
                 time.sleep(0.1)
-                continue
+                continue #hhhh
             
             frame_count += 1
             rgb_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
